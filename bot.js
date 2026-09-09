@@ -1,5 +1,7 @@
 const { Telegraf, Markup, Scenes, session } = require('telegraf');
 const storage = require('./storage');
+const { extractBooking } = require('./nlp');
+const { transcribeVoice } = require('./transcribe');
 
 const TOKEN = process.env.AUTOSERVICE_BOT_TOKEN;
 if (!TOKEN) {
@@ -151,6 +153,39 @@ bot.action(/cancel:(.+)/, async (ctx) => {
   const removed = storage.cancelBooking(id);
   await ctx.answerCbQuery();
   await ctx.editMessageText(removed ? 'Запись отменена.' : 'Запись уже не найдена.');
+});
+
+bot.on('voice', async (ctx) => {
+  if (!process.env.DEEPGRAM_API_KEY) {
+    await ctx.reply('Распознавание голоса пока не подключено (нужен ключ Deepgram). Используйте /записать для записи по шагам.');
+    return;
+  }
+  await ctx.reply('Слушаю...');
+  const link = await ctx.telegram.getFileLink(ctx.message.voice.file_id);
+  const audio = await fetch(link.href).then((r) => r.arrayBuffer());
+  const text = await transcribeVoice(Buffer.from(audio));
+  if (!text) {
+    await ctx.reply('Не удалось распознать голосовое сообщение. Используйте /записать.');
+    return;
+  }
+  const fields = extractBooking(text);
+  const required = ['post', 'date', 'time', 'service', 'client'];
+  const missing = required.filter((f) => !fields[f]);
+  if (missing.length === 0) {
+    if (storage.isSlotTaken(fields.post, fields.date, fields.time)) {
+      await ctx.reply(`Распознала: "${text}"\n\nК сожалению, этот слот уже занят. Используйте /записать, чтобы выбрать другое время.`);
+      return;
+    }
+    const record = storage.addBooking({ ...fields, userId: ctx.from.id, master: ctx.from.username || ctx.from.first_name });
+    await ctx.reply(
+      `Распознала: "${text}"\n\nЗапись #${record.id} создана:\nПост ${record.post}, ${record.date} в ${record.time}\n` +
+      `Услуга: ${record.service}\nКлиент: ${record.client}\n\n${calendarNote()}`
+    );
+  } else {
+    await ctx.reply(
+      `Распознала: "${text}"\n\nНе хватает данных: ${missing.join(', ')}. Уточните голосом ещё раз или используйте /записать для пошаговой записи.`
+    );
+  }
 });
 
 bot.launch();
