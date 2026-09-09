@@ -1,0 +1,14 @@
+{
+  "name": "autoservice-bot-demo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Демо Telegram-бот записи на ремонт для автосервиса (4 поста)",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "test": "node test/simulate.js"
+  },
+  "dependencies": {
+    "telegraf": "^4.16.3"
+  }
+}
