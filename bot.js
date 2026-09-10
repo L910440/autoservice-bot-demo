@@ -110,8 +110,15 @@ function calendarNote() {
 
 const stage = new Scenes.Stage([bookingScene]);
 const bot = new Telegraf(TOKEN);
+bot.use((ctx, next) => {
+  console.log('UPDATE:', ctx.updateType, ctx.from?.id, ctx.message?.text || ctx.callbackQuery?.data || '');
+  return next();
+});
 bot.use(session());
 bot.use(stage.middleware());
+bot.catch((err, ctx) => {
+  console.error('BOT ERROR:', err);
+});
 
 bot.start((ctx) => ctx.reply(
   'Бот записи на ремонт в автосервисе. Команды:\n' +
