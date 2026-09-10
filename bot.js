@@ -152,10 +152,14 @@ async function showMyBookings(ctx) {
   );
 }
 
-bot.start((ctx) => ctx.reply(
-  'Бот записи на ремонт в автосервисе. Выберите действие на клавиатуре снизу:',
-  mainKeyboard
-));
+function sendWelcome(ctx) {
+  return ctx.reply(
+    'Бот записи на ремонт в автосервисе. Выберите действие на клавиатуре снизу:',
+    mainKeyboard
+  );
+}
+
+bot.start(sendWelcome);
 
 // Кнопки на клавиатуре (основной способ управления — надёжнее slash-команд с кириллицей,
 // которые Telegram не всегда распознаёт как команду).
@@ -167,6 +171,14 @@ bot.hears(BTN_MY, showMyBookings);
 bot.command('zapis', (ctx) => ctx.scene.enter('booking'));
 bot.command('raspisanie', showSchedule);
 bot.command('moi', showMyBookings);
+
+// Подстраховка: если человек вручную набрал "старт"/"start" без слэша (частая путаница) —
+// всё равно показать приветствие с клавиатурой, а не молчать.
+bot.hears(/^старт$/i, sendWelcome);
+bot.hears(/^start$/i, sendWelcome);
+
+// Любой другой непонятый текст — не молчать, а подсказать нажать кнопку.
+bot.on('text', (ctx) => ctx.reply('Не поняла сообщение. Нажмите одну из кнопок на клавиатуре снизу.', mainKeyboard));
 
 bot.action(/cancel:(.+)/, async (ctx) => {
   const id = ctx.match[1];
@@ -207,6 +219,13 @@ bot.on('voice', async (ctx) => {
     );
   }
 });
+
+bot.telegram.setMyCommands([
+  { command: 'start', description: 'Начать / показать кнопки меню' },
+  { command: 'zapis', description: 'Новая запись' },
+  { command: 'raspisanie', description: 'Расписание на сегодня' },
+  { command: 'moi', description: 'Мои записи и отмена' },
+]);
 
 bot.launch();
 console.log('Бот автосервиса запущен.');
