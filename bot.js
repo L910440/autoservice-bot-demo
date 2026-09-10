@@ -55,7 +55,7 @@ const bookingScene = new Scenes.WizardScene(
     const { post } = ctx.wizard.state.booking;
     const free = TIME_SLOTS.filter((t) => !storage.isSlotTaken(post, date, t));
     if (free.length === 0) {
-      await ctx.editMessageText('На эту дату на выбранном посту свободных слотов нет. Введите /записать заново и выберите другую дату.');
+      await ctx.editMessageText('На эту дату на выбранном посту свободных слотов нет. Введите «📝 Новая запись» заново и выберите другую дату.');
       return ctx.scene.leave();
     }
     await ctx.editMessageText('Выберите время:', Markup.inlineKeyboard(free.map((t) => Markup.button.callback(t, `time:${t}`)), { columns: 3 }));
@@ -85,7 +85,7 @@ const bookingScene = new Scenes.WizardScene(
     const { post, date, time, service } = ctx.wizard.state.booking;
     const client = ctx.message.text.trim();
     if (storage.isSlotTaken(post, date, time)) {
-      await ctx.reply('Увы, этот слот только что заняли. Начните заново: /записать');
+      await ctx.reply('Увы, этот слот только что заняли. Начните заново: «📝 Новая запись»');
       return ctx.scene.leave();
     }
     const record = storage.addBooking({
@@ -120,16 +120,13 @@ bot.catch((err, ctx) => {
   console.error('BOT ERROR:', err);
 });
 
-bot.start((ctx) => ctx.reply(
-  'Бот записи на ремонт в автосервисе. Команды:\n' +
-  '/записать — новая запись\n' +
-  '/расписание — записи на сегодня\n' +
-  '/мои — мои записи и отмена'
-));
+const BTN_NEW = '📝 Новая запись';
+const BTN_SCHEDULE = '📅 Расписание';
+const BTN_MY = '🗂 Мои записи';
 
-bot.command('записать', (ctx) => ctx.scene.enter('booking'));
+const mainKeyboard = Markup.keyboard([[BTN_NEW, BTN_SCHEDULE, BTN_MY]]).resize();
 
-bot.command('расписание', async (ctx) => {
+async function showSchedule(ctx) {
   const today = new Date().toISOString().slice(0, 10);
   const items = storage.listByDate(today);
   if (items.length === 0) {
@@ -138,9 +135,9 @@ bot.command('расписание', async (ctx) => {
   }
   const text = items.map((b) => `Пост ${b.post} | ${b.time} | ${b.service} | ${b.client}`).join('\n');
   await ctx.reply(`Записи на сегодня:\n${text}`);
-});
+}
 
-bot.command('мои', async (ctx) => {
+async function showMyBookings(ctx) {
   const items = storage.listByUser(ctx.from.id);
   if (items.length === 0) {
     await ctx.reply('У вас нет активных записей.');
@@ -153,7 +150,23 @@ bot.command('мои', async (ctx) => {
       { columns: 1 }
     )
   );
-});
+}
+
+bot.start((ctx) => ctx.reply(
+  'Бот записи на ремонт в автосервисе. Выберите действие на клавиатуре снизу:',
+  mainKeyboard
+));
+
+// Кнопки на клавиатуре (основной способ управления — надёжнее slash-команд с кириллицей,
+// которые Telegram не всегда распознаёт как команду).
+bot.hears(BTN_NEW, (ctx) => ctx.scene.enter('booking'));
+bot.hears(BTN_SCHEDULE, showSchedule);
+bot.hears(BTN_MY, showMyBookings);
+
+// Латинские slash-команды — резервный способ для тех, кто предпочитает печатать команды.
+bot.command('zapis', (ctx) => ctx.scene.enter('booking'));
+bot.command('raspisanie', showSchedule);
+bot.command('moi', showMyBookings);
 
 bot.action(/cancel:(.+)/, async (ctx) => {
   const id = ctx.match[1];
@@ -164,7 +177,7 @@ bot.action(/cancel:(.+)/, async (ctx) => {
 
 bot.on('voice', async (ctx) => {
   if (!process.env.DEEPGRAM_API_KEY) {
-    await ctx.reply('Распознавание голоса пока не подключено (нужен ключ Deepgram). Используйте /записать для записи по шагам.');
+    await ctx.reply('Распознавание голоса пока не подключено (нужен ключ Deepgram). Используйте «📝 Новая запись» для записи по шагам.');
     return;
   }
   await ctx.reply('Слушаю...');
@@ -172,7 +185,7 @@ bot.on('voice', async (ctx) => {
   const audio = await fetch(link.href).then((r) => r.arrayBuffer());
   const text = await transcribeVoice(Buffer.from(audio));
   if (!text) {
-    await ctx.reply('Не удалось распознать голосовое сообщение. Используйте /записать.');
+    await ctx.reply('Не удалось распознать голосовое сообщение. Используйте «📝 Новая запись».');
     return;
   }
   const fields = extractBooking(text);
@@ -180,7 +193,7 @@ bot.on('voice', async (ctx) => {
   const missing = required.filter((f) => !fields[f]);
   if (missing.length === 0) {
     if (storage.isSlotTaken(fields.post, fields.date, fields.time)) {
-      await ctx.reply(`Распознала: "${text}"\n\nК сожалению, этот слот уже занят. Используйте /записать, чтобы выбрать другое время.`);
+      await ctx.reply(`Распознала: "${text}"\n\nК сожалению, этот слот уже занят. Используйте «📝 Новая запись», чтобы выбрать другое время.`);
       return;
     }
     const record = storage.addBooking({ ...fields, userId: ctx.from.id, master: ctx.from.username || ctx.from.first_name });
@@ -190,7 +203,7 @@ bot.on('voice', async (ctx) => {
     );
   } else {
     await ctx.reply(
-      `Распознала: "${text}"\n\nНе хватает данных: ${missing.join(', ')}. Уточните голосом ещё раз или используйте /записать для пошаговой записи.`
+      `Распознала: "${text}"\n\nНе хватает данных: ${missing.join(', ')}. Уточните голосом ещё раз или используйте «📝 Новая запись» для пошаговой записи.`
     );
   }
 });
